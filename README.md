@@ -128,6 +128,15 @@ npm start
 - `get_elementor_data` - Get Elementor page/post data
 - `update_elementor_data` - Update Elementor page/post data (automatically clears cache)
 
+### Elementor Incremental Updates (NEW!)
+For better performance and handling of large pages:
+- `get_elementor_elements` - Get a simplified list of all elements and their IDs
+- `get_elementor_widget` - Get a specific widget from an Elementor page
+- `update_elementor_widget` - Update a specific widget (incremental update)
+- `update_elementor_section` - Update multiple widgets within a section (batch update)
+- `get_elementor_data_chunked` - Get Elementor data in smaller, manageable chunks
+- `backup_elementor_data` - Create a backup before making changes
+
 ### Media
 - `get_media` - Browse WordPress media library
 - `upload_media` - Upload files to WordPress media library
@@ -172,6 +181,38 @@ Update post ID 31 to use Elementor with a section containing a heading widget, t
 Upload the image file at /path/to/image.jpg to WordPress with title "My Image" and alt text "A beautiful image"
 ```
 
+### Incremental Elementor Updates (Performance Optimized)
+
+#### Get All Elements Overview
+```
+Get a list of all elements in page ID 15 to see their IDs and types
+```
+
+#### Update Single Widget
+```
+Update the HTML widget with ID "621ef73f" in page ID 15 with new content "<p>Updated content here</p>"
+```
+
+#### Update Widget Settings
+```
+Update widget "abc123" in page ID 20, changing the text color to #FF0000 and font size to 24px
+```
+
+#### Batch Update Section
+```
+Update section "section456" in page ID 25 with multiple widget changes: update HTML widget "widget1" content and heading widget "widget2" title
+```
+
+#### Get Page Data in Chunks
+```
+Get page ID 30 Elementor data in chunks of 3 elements each, starting with chunk 0
+```
+
+#### Backup Before Changes
+```
+Create a backup of page ID 10 Elementor data with name "before_major_update"
+```
+
 ## Development
 
 ### Building
@@ -193,6 +234,34 @@ npm run dev
 ├── tsconfig.json         # TypeScript configuration
 └── README.md            # This file
 ```
+
+## Performance & Efficiency
+
+### Problem with Large Elementor Pages
+When working with complex Elementor pages, MCP clients often struggle with:
+- Large JSON data transfers (pages can be 500KB+ of data)
+- Memory constraints when processing entire page structures
+- Slow response times for simple content updates
+- Risk of data corruption when updating massive JSON structures
+
+### Solution: Incremental Updates
+This MCP server now provides several approaches to handle large Elementor pages more efficiently:
+
+1. **Widget-Level Updates**: Update individual widgets without touching the rest of the page
+2. **Section-Level Batch Updates**: Update multiple widgets within a specific section
+3. **Chunked Data Retrieval**: Get page data in smaller, manageable pieces
+4. **Element Discovery**: Get a lightweight overview of all elements and their IDs
+5. **Backup System**: Create safe backups before making changes
+
+### When to Use Each Approach
+
+| Method | Best For | Data Size | Use Case |
+|--------|----------|-----------|----------|
+| `update_elementor_data` | Small pages, complete rebuilds | Full page data | Traditional full-page updates |
+| `update_elementor_widget` | Single widget changes | ~1-10KB | Updating text, images, simple content |
+| `update_elementor_section` | Related widget updates | ~10-50KB | Updating a section's content at once |
+| `get_elementor_data_chunked` | Large page analysis | ~20-100KB per chunk | Exploring large pages safely |
+| `get_elementor_elements` | Page discovery | ~5-20KB | Finding widgets to update |
 
 ## Troubleshooting
 

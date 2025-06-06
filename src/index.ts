@@ -320,6 +320,24 @@ class ElementorWordPressMCP {
             },
           },
           {
+            name: 'backup_elementor_data',
+            description: 'Create a backup of current Elementor data before making changes',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                post_id: {
+                  type: 'number',
+                  description: 'Post/Page ID to backup',
+                },
+                backup_name: {
+                  type: 'string',
+                  description: 'Optional backup name (default: timestamp)',
+                },
+              },
+              required: ['post_id'],
+            },
+          },
+          {
             name: 'update_elementor_data',
             description: 'Update Elementor page/post data',
             inputSchema: {
@@ -335,6 +353,133 @@ class ElementorWordPressMCP {
                 },
               },
               required: ['post_id', 'elementor_data'],
+            },
+          },
+          {
+            name: 'update_elementor_widget',
+            description: 'Update a specific widget within an Elementor page (incremental update)',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                post_id: {
+                  type: 'number',
+                  description: 'Post/Page ID to update',
+                },
+                widget_id: {
+                  type: 'string',
+                  description: 'Elementor widget ID (e.g., "621ef73f")',
+                },
+                widget_settings: {
+                  type: 'object',
+                  description: 'Widget settings object to update',
+                },
+                widget_content: {
+                  type: 'string',
+                  description: 'Widget content (for widgets like HTML, text, etc.)',
+                },
+              },
+              required: ['post_id', 'widget_id'],
+            },
+          },
+          {
+            name: 'get_elementor_widget',
+            description: 'Get a specific widget from an Elementor page',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                post_id: {
+                  type: 'number',
+                  description: 'Post/Page ID',
+                },
+                widget_id: {
+                  type: 'string',
+                  description: 'Elementor widget ID (e.g., "621ef73f")',
+                },
+              },
+              required: ['post_id', 'widget_id'],
+            },
+          },
+          {
+            name: 'get_elementor_elements',
+            description: 'Get a simplified list of all elements and their IDs from an Elementor page',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                post_id: {
+                  type: 'number',
+                  description: 'Post/Page ID',
+                },
+                include_content: {
+                  type: 'boolean',
+                  description: 'Include element content/settings preview (default: false)',
+                  default: false,
+                },
+              },
+              required: ['post_id'],
+            },
+          },
+          {
+            name: 'update_elementor_section',
+            description: 'Update multiple widgets within a specific Elementor section (batch update)',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                post_id: {
+                  type: 'number',
+                  description: 'Post/Page ID to update',
+                },
+                section_id: {
+                  type: 'string',
+                  description: 'Elementor section ID',
+                },
+                widgets_updates: {
+                  type: 'array',
+                  description: 'Array of widget updates',
+                  items: {
+                    type: 'object',
+                    properties: {
+                      widget_id: {
+                        type: 'string',
+                        description: 'Widget ID to update',
+                      },
+                      widget_settings: {
+                        type: 'object',
+                        description: 'Widget settings to update',
+                      },
+                      widget_content: {
+                        type: 'string',
+                        description: 'Widget content to update',
+                      },
+                    },
+                    required: ['widget_id'],
+                  },
+                },
+              },
+              required: ['post_id', 'section_id', 'widgets_updates'],
+            },
+          },
+          {
+            name: 'get_elementor_data_chunked',
+            description: 'Get Elementor data in smaller chunks to handle large pages more efficiently',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                post_id: {
+                  type: 'number',
+                  description: 'Post/Page ID',
+                },
+                chunk_size: {
+                  type: 'number',
+                  description: 'Number of top-level elements per chunk (default: 5)',
+                  default: 5,
+                },
+                chunk_index: {
+                  type: 'number',
+                  description: 'Zero-based chunk index to retrieve (default: 0)',
+                  default: 0,
+                },
+              },
+              required: ['post_id'],
             },
           },
           {
@@ -408,6 +553,18 @@ class ElementorWordPressMCP {
             return await this.getElementorData(args as any);
           case 'update_elementor_data':
             return await this.updateElementorData(args as any);
+          case 'update_elementor_widget':
+            return await this.updateElementorWidget(args as any);
+          case 'get_elementor_widget':
+            return await this.getElementorWidget(args as any);
+          case 'get_elementor_elements':
+            return await this.getElementorElements(args as any);
+          case 'update_elementor_section':
+            return await this.updateElementorSection(args as any);
+          case 'get_elementor_data_chunked':
+            return await this.getElementorDataChunked(args as any);
+          case 'backup_elementor_data':
+            return await this.backupElementorData(args as any);
           case 'get_media':
             return await this.getMedia(args as any);
           case 'upload_media':
@@ -1016,6 +1173,653 @@ Visit the page to confirm changes are visible. If not, the cache clearing was in
       throw new McpError(
         ErrorCode.InvalidRequest,
         `Failed to update Elementor data: ${error.response?.data?.message || error.message}`
+      );
+    }
+  }
+
+  private async updateElementorWidget(args: { post_id: number; widget_id: string; widget_settings?: object; widget_content?: string }) {
+    this.ensureAuthenticated();
+    
+    try {
+      // Get current Elementor data
+      const currentElementorData = await this.getElementorData({ post_id: args.post_id });
+      const currentDataText = currentElementorData.content[0].text;
+      
+      if (currentDataText.includes('No Elementor data found')) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `No Elementor data found for post/page ID ${args.post_id}`
+        );
+      }
+      
+      // Parse current data
+      let elementorData: any[];
+      try {
+        elementorData = JSON.parse(currentDataText);
+      } catch (parseError) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Failed to parse current Elementor data: ${parseError}`
+        );
+      }
+      
+      // Function to recursively find and update widget
+      const updateWidgetRecursive = (elements: any[]): boolean => {
+        for (let i = 0; i < elements.length; i++) {
+          const element = elements[i];
+          
+          if (element.id === args.widget_id) {
+            // Found the widget, update it
+            if (args.widget_settings) {
+              element.settings = { ...element.settings, ...args.widget_settings };
+            }
+            
+            // Special handling for HTML widget content
+            if (args.widget_content && element.widgetType === 'html') {
+              element.settings.html = args.widget_content;
+            }
+            
+            // Special handling for text widget content
+            if (args.widget_content && element.widgetType === 'text-editor') {
+              element.settings.editor = args.widget_content;
+            }
+            
+            // Special handling for heading widget content
+            if (args.widget_content && element.widgetType === 'heading') {
+              element.settings.title = args.widget_content;
+            }
+            
+            return true;
+          }
+          
+          // Recursively search in nested elements
+          if (element.elements && element.elements.length > 0) {
+            if (updateWidgetRecursive(element.elements)) {
+              return true;
+            }
+          }
+        }
+        return false;
+      };
+      
+      // Find and update the widget
+      const widgetFound = updateWidgetRecursive(elementorData);
+      
+      if (!widgetFound) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Widget ID ${args.widget_id} not found in Elementor data`
+        );
+      }
+      
+      // Update the page with modified data
+      const updateData = {
+        meta: {
+          _elementor_data: JSON.stringify(elementorData),
+          _elementor_edit_mode: 'builder',
+        },
+      };
+
+      // Try to update as post first, then as page if that fails
+      let response;
+      let postType = 'post';
+      
+      try {
+        response = await this.axiosInstance!.post(`posts/${args.post_id}`, updateData);
+      } catch (postError: any) {
+        if (postError.response?.status === 404) {
+          // Try as page
+          try {
+            response = await this.axiosInstance!.post(`pages/${args.post_id}`, updateData);
+            postType = 'page';
+          } catch (pageError: any) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              `Post/Page ID ${args.post_id} not found in posts or pages`
+            );
+          }
+        } else {
+          throw postError;
+        }
+      }
+
+      // Clear Elementor cache after updating data
+      await this.clearElementorCache(args.post_id);
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Elementor widget ${args.widget_id} updated successfully for ${postType} ID: ${args.post_id}.
+
+⚠️  IMPORTANT: MANUAL CACHE CLEARING REQUIRED
+The Elementor cache has been programmatically cleared, but you may need to manually clear additional caches:
+
+🔧 REQUIRED STEPS:
+1. Go to WordPress Admin → Elementor → Tools → Regenerate CSS & Data
+2. Click "Regenerate Files & Data" 
+3. If using caching plugins, clear those caches too
+4. Clear browser cache or use incognito/private browsing
+
+🎯 VERIFICATION:
+Visit the page to confirm changes are visible. If not, the cache clearing was incomplete.
+
+✅ Widget-specific incremental update completed.`,
+          },
+        ],
+      };
+    } catch (error: any) {
+      if (error instanceof McpError) {
+        throw error;
+      }
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        `Failed to update Elementor widget: ${error.response?.data?.message || error.message}`
+      );
+    }
+  }
+
+  private async getElementorWidget(args: { post_id: number; widget_id: string }) {
+    this.ensureAuthenticated();
+    
+    try {
+      // Get current Elementor data
+      const currentElementorData = await this.getElementorData({ post_id: args.post_id });
+      const currentDataText = currentElementorData.content[0].text;
+      
+      if (currentDataText.includes('No Elementor data found')) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `No Elementor data found for post/page ID ${args.post_id}`
+        );
+      }
+      
+      // Parse current data
+      let elementorData: any[];
+      try {
+        elementorData = JSON.parse(currentDataText);
+      } catch (parseError) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Failed to parse current Elementor data: ${parseError}`
+        );
+      }
+      
+      // Function to recursively find widget
+      const findWidgetRecursive = (elements: any[]): any => {
+        for (const element of elements) {
+          if (element.id === args.widget_id) {
+            return element;
+          }
+          
+          // Recursively search in nested elements
+          if (element.elements && element.elements.length > 0) {
+            const found = findWidgetRecursive(element.elements);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      
+      // Find the widget
+      const widget = findWidgetRecursive(elementorData);
+      
+      if (!widget) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Widget ID ${args.widget_id} not found in Elementor data`
+        );
+      }
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify(widget, null, 2),
+          },
+        ],
+      };
+    } catch (error: any) {
+      if (error instanceof McpError) {
+        throw error;
+      }
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        `Failed to get Elementor widget: ${error.response?.data?.message || error.message}`
+      );
+    }
+  }
+
+  private async getElementorElements(args: { post_id: number; include_content?: boolean }) {
+    this.ensureAuthenticated();
+    
+    try {
+      // Get current Elementor data
+      const currentElementorData = await this.getElementorData({ post_id: args.post_id });
+      const currentDataText = currentElementorData.content[0].text;
+      
+      if (currentDataText.includes('No Elementor data found')) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `No Elementor data found for post/page ID ${args.post_id}`
+        );
+      }
+      
+      // Parse current data
+      let elementorData: any[];
+      try {
+        elementorData = JSON.parse(currentDataText);
+      } catch (parseError) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Failed to parse current Elementor data: ${parseError}`
+        );
+      }
+      
+      // Function to recursively extract elements
+      const extractElementsRecursive = (elements: any[], level = 0): any[] => {
+        const result: any[] = [];
+        
+        for (const element of elements) {
+          const elementInfo: any = {
+            id: element.id,
+            type: element.elType,
+            level: level,
+          };
+          
+          if (element.widgetType) {
+            elementInfo.widgetType = element.widgetType;
+          }
+          
+          if (args.include_content && element.settings) {
+            // Include preview of content for common widget types
+            if (element.widgetType === 'html' && element.settings.html) {
+              elementInfo.contentPreview = element.settings.html.substring(0, 100) + (element.settings.html.length > 100 ? '...' : '');
+            } else if (element.widgetType === 'text-editor' && element.settings.editor) {
+              elementInfo.contentPreview = element.settings.editor.substring(0, 100) + (element.settings.editor.length > 100 ? '...' : '');
+            } else if (element.widgetType === 'heading' && element.settings.title) {
+              elementInfo.contentPreview = element.settings.title.substring(0, 100) + (element.settings.title.length > 100 ? '...' : '');
+            }
+          }
+          
+          result.push(elementInfo);
+          
+          // Recursively process nested elements
+          if (element.elements && element.elements.length > 0) {
+            result.push(...extractElementsRecursive(element.elements, level + 1));
+          }
+        }
+        
+        return result;
+      };
+      
+      const elements = extractElementsRecursive(elementorData);
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({ 
+              post_id: args.post_id,
+              total_elements: elements.length,
+              elements: elements 
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error: any) {
+      if (error instanceof McpError) {
+        throw error;
+      }
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        `Failed to get Elementor elements: ${error.response?.data?.message || error.message}`
+      );
+    }
+  }
+
+  private async updateElementorSection(args: { post_id: number; section_id: string; widgets_updates: Array<{widget_id: string; widget_settings?: object; widget_content?: string}> }) {
+    this.ensureAuthenticated();
+    
+    try {
+      // Get current Elementor data
+      const currentElementorData = await this.getElementorData({ post_id: args.post_id });
+      const currentDataText = currentElementorData.content[0].text;
+      
+      if (currentDataText.includes('No Elementor data found')) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `No Elementor data found for post/page ID ${args.post_id}`
+        );
+      }
+      
+      // Parse current data
+      let elementorData: any[];
+      try {
+        elementorData = JSON.parse(currentDataText);
+      } catch (parseError) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Failed to parse current Elementor data: ${parseError}`
+        );
+      }
+      
+      let sectionFound = false;
+      let updatedWidgets: string[] = [];
+      
+      // Function to recursively find section and update widgets
+      const updateSectionWidgets = (elements: any[]): boolean => {
+        for (let i = 0; i < elements.length; i++) {
+          const element = elements[i];
+          
+          if (element.id === args.section_id) {
+            sectionFound = true;
+            // Found the section, now update widgets within it
+            for (const widgetUpdate of args.widgets_updates) {
+              const updated = updateWidgetInElements(element.elements || [], widgetUpdate);
+              if (updated) {
+                updatedWidgets.push(widgetUpdate.widget_id);
+              }
+            }
+            return true;
+          }
+          
+          // Recursively search in nested elements
+          if (element.elements && element.elements.length > 0) {
+            if (updateSectionWidgets(element.elements)) {
+              return true;
+            }
+          }
+        }
+        return false;
+      };
+      
+      // Helper function to update widget in elements array
+      const updateWidgetInElements = (elements: any[], widgetUpdate: {widget_id: string; widget_settings?: object; widget_content?: string}): boolean => {
+        for (const element of elements) {
+          if (element.id === widgetUpdate.widget_id) {
+            // Found the widget, update it
+            if (widgetUpdate.widget_settings) {
+              element.settings = { ...element.settings, ...widgetUpdate.widget_settings };
+            }
+            
+            // Special handling for HTML widget content
+            if (widgetUpdate.widget_content && element.widgetType === 'html') {
+              element.settings.html = widgetUpdate.widget_content;
+            }
+            
+            // Special handling for text widget content
+            if (widgetUpdate.widget_content && element.widgetType === 'text-editor') {
+              element.settings.editor = widgetUpdate.widget_content;
+            }
+            
+            // Special handling for heading widget content
+            if (widgetUpdate.widget_content && element.widgetType === 'heading') {
+              element.settings.title = widgetUpdate.widget_content;
+            }
+            
+            return true;
+          }
+          
+          // Recursively search in nested elements
+          if (element.elements && element.elements.length > 0) {
+            if (updateWidgetInElements(element.elements, widgetUpdate)) {
+              return true;
+            }
+          }
+        }
+        return false;
+      };
+      
+      // Find section and update widgets
+      updateSectionWidgets(elementorData);
+      
+      if (!sectionFound) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Section ID ${args.section_id} not found in Elementor data`
+        );
+      }
+      
+      // Update the page with modified data
+      const updateData = {
+        meta: {
+          _elementor_data: JSON.stringify(elementorData),
+          _elementor_edit_mode: 'builder',
+        },
+      };
+
+      // Try to update as post first, then as page if that fails
+      let response;
+      let postType = 'post';
+      
+      try {
+        response = await this.axiosInstance!.post(`posts/${args.post_id}`, updateData);
+      } catch (postError: any) {
+        if (postError.response?.status === 404) {
+          // Try as page
+          try {
+            response = await this.axiosInstance!.post(`pages/${args.post_id}`, updateData);
+            postType = 'page';
+          } catch (pageError: any) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              `Post/Page ID ${args.post_id} not found in posts or pages`
+            );
+          }
+        } else {
+          throw postError;
+        }
+      }
+
+      // Clear Elementor cache after updating data
+      await this.clearElementorCache(args.post_id);
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `Elementor section ${args.section_id} updated successfully for ${postType} ID: ${args.post_id}.
+
+Updated widgets: ${updatedWidgets.join(', ') || 'None'}
+Widgets not found: ${args.widgets_updates.filter(w => !updatedWidgets.includes(w.widget_id)).map(w => w.widget_id).join(', ') || 'None'}
+
+⚠️  IMPORTANT: MANUAL CACHE CLEARING REQUIRED
+The Elementor cache has been programmatically cleared, but you may need to manually clear additional caches:
+
+🔧 REQUIRED STEPS:
+1. Go to WordPress Admin → Elementor → Tools → Regenerate CSS & Data
+2. Click "Regenerate Files & Data" 
+3. If using caching plugins, clear those caches too
+4. Clear browser cache or use incognito/private browsing
+
+🎯 VERIFICATION:
+Visit the page to confirm changes are visible. If not, the cache clearing was incomplete.
+
+✅ Section-level batch update completed.`,
+          },
+        ],
+      };
+    } catch (error: any) {
+      if (error instanceof McpError) {
+        throw error;
+      }
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        `Failed to update Elementor section: ${error.response?.data?.message || error.message}`
+      );
+    }
+  }
+
+  private async getElementorDataChunked(args: { post_id: number; chunk_size?: number; chunk_index?: number }) {
+    this.ensureAuthenticated();
+    
+    try {
+      // Get current Elementor data
+      const currentElementorData = await this.getElementorData({ post_id: args.post_id });
+      const currentDataText = currentElementorData.content[0].text;
+      
+      if (currentDataText.includes('No Elementor data found')) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `No Elementor data found for post/page ID ${args.post_id}`
+        );
+      }
+      
+      // Parse current data
+      let elementorData: any[];
+      try {
+        elementorData = JSON.parse(currentDataText);
+      } catch (parseError) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Failed to parse current Elementor data: ${parseError}`
+        );
+      }
+      
+      const chunkSize = args.chunk_size || 5;
+      const chunkIndex = args.chunk_index || 0;
+      const totalElements = elementorData.length;
+      const totalChunks = Math.ceil(totalElements / chunkSize);
+      
+      const startIndex = chunkIndex * chunkSize;
+      const endIndex = Math.min(startIndex + chunkSize, totalElements);
+      
+      if (chunkIndex >= totalChunks) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `Chunk index ${chunkIndex} is out of range. Total chunks: ${totalChunks}`
+        );
+      }
+      
+      const chunk = elementorData.slice(startIndex, endIndex);
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: JSON.stringify({
+              post_id: args.post_id,
+              chunk_info: {
+                chunk_index: chunkIndex,
+                chunk_size: chunkSize,
+                total_chunks: totalChunks,
+                total_elements: totalElements,
+                elements_in_chunk: chunk.length,
+                start_index: startIndex,
+                end_index: endIndex - 1
+              },
+              chunk_data: chunk
+            }, null, 2),
+          },
+        ],
+      };
+    } catch (error: any) {
+      if (error instanceof McpError) {
+        throw error;
+      }
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        `Failed to get chunked Elementor data: ${error.response?.data?.message || error.message}`
+      );
+    }
+  }
+
+  private async backupElementorData(args: { post_id: number; backup_name?: string }) {
+    this.ensureAuthenticated();
+    
+    try {
+      // Get current Elementor data
+      const currentElementorData = await this.getElementorData({ post_id: args.post_id });
+      const currentDataText = currentElementorData.content[0].text;
+      
+      if (currentDataText.includes('No Elementor data found')) {
+        throw new McpError(
+          ErrorCode.InvalidRequest,
+          `No Elementor data found for post/page ID ${args.post_id}`
+        );
+      }
+      
+      // Create backup metadata
+      const timestamp = new Date().toISOString();
+      const backupName = args.backup_name || `backup_${timestamp}`;
+      
+      // Try to get the post/page to determine type
+      let postInfo;
+      let postType = 'post';
+      
+      try {
+        postInfo = await this.axiosInstance!.get(`posts/${args.post_id}`, {
+          params: { context: 'edit' }
+        });
+      } catch (postError: any) {
+        if (postError.response?.status === 404) {
+          try {
+            postInfo = await this.axiosInstance!.get(`pages/${args.post_id}`, {
+              params: { context: 'edit' }
+            });
+            postType = 'page';
+          } catch (pageError: any) {
+            throw new McpError(
+              ErrorCode.InvalidRequest,
+              `Post/Page ID ${args.post_id} not found in posts or pages`
+            );
+          }
+        } else {
+          throw postError;
+        }
+      }
+      
+      // Store backup in post meta with unique key
+      const backupKey = `_elementor_data_backup_${Date.now()}`;
+      const backupMeta = {
+        meta: {
+          [backupKey]: JSON.stringify({
+            backup_name: backupName,
+            timestamp: timestamp,
+            post_id: args.post_id,
+            post_type: postType,
+            post_title: postInfo.data.title.rendered || postInfo.data.title.raw,
+            elementor_data: currentDataText
+          })
+        }
+      };
+      
+      // Save backup
+      let response;
+      if (postType === 'page') {
+        response = await this.axiosInstance!.post(`pages/${args.post_id}`, backupMeta);
+      } else {
+        response = await this.axiosInstance!.post(`posts/${args.post_id}`, backupMeta);
+      }
+      
+      return {
+        content: [
+          {
+            type: 'text',
+            text: `✅ Elementor data backup created successfully!
+
+Backup Details:
+- Post/Page ID: ${args.post_id}
+- Post Type: ${postType}
+- Post Title: ${postInfo.data.title.rendered || postInfo.data.title.raw}
+- Backup Name: ${backupName}
+- Backup Key: ${backupKey}
+- Timestamp: ${timestamp}
+
+💡 This backup is stored as meta data in the same post/page. You can restore it using the regular update_elementor_data tool with the backed up data if needed.
+
+⚠️  Note: This backup method stores data in WordPress meta. For production use, consider implementing a dedicated backup system with external storage.`,
+          },
+        ],
+      };
+    } catch (error: any) {
+      if (error instanceof McpError) {
+        throw error;
+      }
+      throw new McpError(
+        ErrorCode.InvalidRequest,
+        `Failed to backup Elementor data: ${error.response?.data?.message || error.message}`
       );
     }
   }
