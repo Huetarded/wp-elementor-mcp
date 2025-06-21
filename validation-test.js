@@ -7,10 +7,10 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 const VALIDATION_CONFIG = {
   modes: ['essential', 'standard', 'advanced', 'full'],
   expectedToolCounts: {
-    essential: 21,  // Basic WordPress + Elementor operations
-    standard: 32,   // + Section and widget management
-    advanced: 33,   // + Performance and advanced operations
-    full: 33        // + All pro features (template, global, custom fields)
+    essential: 22,  // Basic WordPress + Elementor operations
+    standard: 33,   // + Section and widget management
+    advanced: 34,   // + Performance and advanced operations
+    full: 34        // + All pro features (template, global, custom fields)
   }
 };
 

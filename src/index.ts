@@ -411,7 +411,7 @@ class ElementorWordPressMCP {
         tools.push(
           {
             name: 'get_posts',
-            description: 'Retrieve WordPress posts with optional filtering',
+            description: 'Get and list WordPress posts with optional filtering by status, search terms, and pagination',
             inputSchema: {
               type: 'object',
               properties: {
@@ -505,7 +505,7 @@ class ElementorWordPressMCP {
           },
           {
             name: 'get_pages',
-            description: 'Retrieve WordPress pages',
+            description: 'Get and list WordPress pages with optional filtering by status and pagination',
             inputSchema: {
               type: 'object',
               properties: {
@@ -538,7 +538,7 @@ class ElementorWordPressMCP {
           },
           {
             name: 'list_all_content',
-            description: 'List all posts and pages with their IDs and Elementor status for debugging',
+            description: 'Get and display all posts and pages with their IDs and Elementor integration status for debugging and content discovery',
             inputSchema: {
               type: 'object',
               properties: {
@@ -640,7 +640,7 @@ class ElementorWordPressMCP {
           },
           {
             name: 'upload_media',
-            description: 'Upload media file to WordPress',
+            description: 'Create and store media files in WordPress media library with metadata and alt text configuration',
             inputSchema: {
               type: 'object',
               properties: {
@@ -820,7 +820,7 @@ class ElementorWordPressMCP {
           },
           {
             name: 'get_elementor_data_smart',
-            description: 'Get Elementor data with intelligent chunking for large pages - automatically handles nested structures and token limits',
+            description: 'Get Elementor page data with intelligent chunking and depth control for optimal performance on large pages',
             inputSchema: {
               type: 'object',
               properties: {
